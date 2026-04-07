@@ -9,7 +9,7 @@ SELECT
     COUNT(DISTINCT o.order_id)             AS order_count,
     SUM(oi.price_usd)                      AS total_revenue,
     ROUND(
-        SUM(oi.price_usd) / COUNT(DISTINCT o.order_id), 2
+        (SUM(oi.price_usd) / COUNT(DISTINCT o.order_id))::numeric, 2
     )                                      AS avg_order_value
 FROM stg_order_items oi
 JOIN stg_orders   o ON oi.order_id   = o.order_id
