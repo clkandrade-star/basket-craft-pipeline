@@ -13,7 +13,7 @@ python -m venv .venv
 
 Copy `.env.example` to `.env` and fill in credentials before running anything.
 
-Start the PostgreSQL container:
+Start the local PostgreSQL container:
 
 ```bash
 docker compose up -d
@@ -22,8 +22,11 @@ docker compose up -d
 ## Commands
 
 ```bash
-# Run the full pipeline
+# Run the full local pipeline (extract → transform)
 .venv/Scripts/python run_pipeline.py
+
+# Extract all MySQL tables raw into AWS RDS
+.venv/Scripts/python extract_to_rds.py
 
 # Run all tests
 .venv/Scripts/pytest -v
@@ -34,20 +37,32 @@ docker compose up -d
 # Run a single test
 .venv/Scripts/pytest tests/test_transform.py::test_transform_writes_summary_table -v
 
-# Inspect results in PostgreSQL
+# Inspect results in local PostgreSQL
 docker exec basket-craft-pipeline-postgres-1 psql -U postgres -d basket_craft -c "SELECT * FROM monthly_sales_summary LIMIT 10;"
 ```
 
 ## Architecture
 
-Two-layer EL+T pipeline triggered manually via `run_pipeline.py`:
+There are two independent pipelines:
 
-1. **Extract** (`extract.py`) — full truncate-and-reload of three MySQL source tables (`orders`, `order_items`, `products`) into PostgreSQL staging tables (`stg_orders`, `stg_order_items`, `stg_products`) using `pandas.read_sql` / `DataFrame.to_sql(if_exists='replace')`.
+### Local EL+T pipeline (`run_pipeline.py`)
 
-2. **Transform** (`transform.py`) — reads from the three staging tables and writes aggregated output to `monthly_sales_summary` (product_name × year × month with order_count, total_revenue, avg_order_value). The aggregation SQL lives in the `TRANSFORM_SQL` module-level constant.
+Extracts three tables from MySQL into a local PostgreSQL container, then aggregates them:
 
-3. **`db.py`** — provides `get_mysql_engine()` and `get_postgres_engine()` connection factories via SQLAlchemy + python-dotenv. Both functions accept injected engines in tests via optional parameters on `extract()` and `transform()`.
+1. **`extract.py`** — truncate-and-reload of `orders`, `order_items`, `products` from MySQL into local PostgreSQL staging tables (`stg_orders`, `stg_order_items`, `stg_products`) via `pandas.read_sql` / `DataFrame.to_sql(if_exists='replace')`.
+2. **`transform.py`** — reads the three staging tables and writes `monthly_sales_summary` (product_name × year × month with order_count, total_revenue, avg_order_value). The aggregation SQL lives in the `TRANSFORM_SQL` module-level constant.
 
-**Testing approach:** All tests mock the DB engines — no live connections required. `extract()` and `transform()` accept optional `mysql_engine`/`postgres_engine` parameters for injection; when `None`, they fall back to the factory functions.
+### RDS bulk load (`extract_to_rds.py`)
+
+Discovers all tables in MySQL via `sqlalchemy.inspect` and loads them as-is into AWS RDS PostgreSQL. Explicitly `DROP TABLE IF EXISTS` before each load to avoid PostgreSQL catalog conflicts from partial runs. The MySQL source has 8 tables: `employees`, `order_item_refunds`, `order_items`, `orders`, `products`, `users`, `website_pageviews`, `website_sessions`.
+
+### Shared infrastructure
+
+**`db.py`** — three SQLAlchemy engine factories reading from `.env` via python-dotenv:
+- `get_mysql_engine()` — source MySQL (`MYSQL_*` vars)
+- `get_postgres_engine()` — local Docker PostgreSQL (`POSTGRES_*` vars)
+- `get_rds_engine()` — AWS RDS PostgreSQL (`RDS_*` vars)
+
+**Testing approach:** All tests mock DB engines — no live connections required. `extract()` and `transform()` accept optional `mysql_engine`/`postgres_engine` keyword arguments; when `None`, they call the factory functions.
 
 **PostgreSQL note:** `ROUND()` requires a `::numeric` cast — `double precision` is not accepted by PostgreSQL's two-argument `ROUND`. See `TRANSFORM_SQL` in `transform.py`.
