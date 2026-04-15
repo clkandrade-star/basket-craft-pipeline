@@ -1,4 +1,5 @@
 import os
+import snowflake.connector
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 
@@ -30,3 +31,15 @@ def get_rds_engine():
         f"/{os.getenv('RDS_DATABASE')}"
     )
     return create_engine(url)
+
+
+def get_snowflake_connection():
+    return snowflake.connector.connect(
+        account=os.getenv('SNOWFLAKE_ACCOUNT'),
+        user=os.getenv('SNOWFLAKE_USER'),
+        password=os.getenv('SNOWFLAKE_PASSWORD'),
+        warehouse=os.getenv('SNOWFLAKE_WAREHOUSE'),
+        database=os.getenv('SNOWFLAKE_DATABASE'),
+        schema=os.getenv('SNOWFLAKE_SCHEMA'),
+        role=os.getenv('SNOWFLAKE_ROLE'),
+    )

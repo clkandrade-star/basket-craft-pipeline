@@ -1,7 +1,7 @@
 import os
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from sqlalchemy.engine import Engine
-from db import get_mysql_engine, get_postgres_engine
+from db import get_mysql_engine, get_postgres_engine, get_snowflake_connection
 
 
 def test_get_mysql_engine_returns_engine():
@@ -26,3 +26,28 @@ def test_get_postgres_engine_returns_engine():
         engine = get_postgres_engine()
     assert isinstance(engine, Engine)
     assert 'postgresql+psycopg2' in str(engine.url)
+
+
+def test_get_snowflake_connection_calls_connector_with_env_vars():
+    env = {
+        'SNOWFLAKE_ACCOUNT': 'myorg-myaccount',
+        'SNOWFLAKE_USER': 'testuser',
+        'SNOWFLAKE_PASSWORD': 'secret',
+        'SNOWFLAKE_WAREHOUSE': 'COMPUTE_WH',
+        'SNOWFLAKE_DATABASE': 'BASKET_CRAFT',
+        'SNOWFLAKE_SCHEMA': 'RAW',
+        'SNOWFLAKE_ROLE': 'SYSADMIN',
+    }
+    with patch.dict(os.environ, env):
+        with patch('db.snowflake.connector.connect', return_value=MagicMock()) as mock_connect:
+            get_snowflake_connection()
+
+    mock_connect.assert_called_once_with(
+        account='myorg-myaccount',
+        user='testuser',
+        password='secret',
+        warehouse='COMPUTE_WH',
+        database='BASKET_CRAFT',
+        schema='RAW',
+        role='SYSADMIN',
+    )
