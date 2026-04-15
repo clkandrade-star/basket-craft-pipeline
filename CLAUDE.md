@@ -28,6 +28,9 @@ docker compose up -d
 # Extract all MySQL tables raw into AWS RDS
 .venv/Scripts/python extract_to_rds.py
 
+# Load all RDS tables into Snowflake (basket_craft.raw)
+.venv/Scripts/python extract_rds_to_snowflake.py
+
 # Run all tests
 .venv/Scripts/pytest -v
 
@@ -56,12 +59,27 @@ Extracts three tables from MySQL into a local PostgreSQL container, then aggrega
 
 Discovers all tables in MySQL via `sqlalchemy.inspect` and loads them as-is into AWS RDS PostgreSQL. Explicitly `DROP TABLE IF EXISTS` before each load to avoid PostgreSQL catalog conflicts from partial runs. The MySQL source has 8 tables: `employees`, `order_item_refunds`, `order_items`, `orders`, `products`, `users`, `website_pageviews`, `website_sessions`.
 
+### Snowflake loader (`extract_rds_to_snowflake.py`)
+
+Reads all 8 tables from AWS RDS PostgreSQL and loads them into Snowflake using truncate-and-reload. For each table: drops the existing Snowflake table, lowercases all column names, then bulk-loads via `snowflake-connector-python`'s `write_pandas`.
+
+**Target:** `BASKET_CRAFT.RAW` (database and schema set via `SNOWFLAKE_DATABASE` / `SNOWFLAKE_SCHEMA` in `.env`)
+
+**Credentials required in `.env`** (see `.env.example` for all keys):
+- `SNOWFLAKE_ACCOUNT` — account identifier, e.g. `xy12345.us-east-1` (no `.snowflakecomputing.com`)
+- `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD` — login credentials
+- `SNOWFLAKE_WAREHOUSE` — compute warehouse to use
+- `SNOWFLAKE_DATABASE` — target database (`BASKET_CRAFT`)
+- `SNOWFLAKE_SCHEMA` — target schema (`RAW`)
+- `SNOWFLAKE_ROLE` — role to assume for the session
+
 ### Shared infrastructure
 
-**`db.py`** — three SQLAlchemy engine factories reading from `.env` via python-dotenv:
+**`db.py`** — engine/connection factories reading from `.env` via python-dotenv:
 - `get_mysql_engine()` — source MySQL (`MYSQL_*` vars)
 - `get_postgres_engine()` — local Docker PostgreSQL (`POSTGRES_*` vars)
 - `get_rds_engine()` — AWS RDS PostgreSQL (`RDS_*` vars)
+- `get_snowflake_connection()` — Snowflake connector connection (`SNOWFLAKE_*` vars)
 
 **Testing approach:** All tests mock DB engines — no live connections required. `extract()` and `transform()` accept optional `mysql_engine`/`postgres_engine` keyword arguments; when `None`, they call the factory functions.
 
