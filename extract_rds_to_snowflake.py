@@ -14,8 +14,8 @@ def extract_rds_to_snowflake(rds_engine=None, snowflake_conn=None):
     tables = inspect(rds_engine).get_table_names()
     print(f"Found {len(tables)} tables: {tables}")
 
-    schema = os.getenv('SNOWFLAKE_SCHEMA').upper()
-    database = os.getenv('SNOWFLAKE_DATABASE').upper()
+    schema = os.environ['SNOWFLAKE_SCHEMA'].upper()
+    database = os.environ['SNOWFLAKE_DATABASE'].upper()
     cursor = snowflake_conn.cursor()
     try:
         for table in tables:
