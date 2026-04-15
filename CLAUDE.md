@@ -44,6 +44,30 @@ docker compose up -d
 docker exec basket-craft-pipeline-postgres-1 psql -U postgres -d basket_craft -c "SELECT * FROM monthly_sales_summary LIMIT 10;"
 ```
 
+### dbt commands
+
+dbt requires Python 3.13 — use `.venv313/Scripts/` not `.venv/Scripts/`. All
+`SNOWFLAKE_*` vars must be exported to the shell before running dbt (they are
+read via `env_var()` in `profiles.yml`, not loaded from `.env` automatically).
+
+```bash
+# Export credentials from .env into the current shell session
+set -a && source .env && set +a
+
+# Then run dbt from inside the project folder
+cd basket_craft
+
+# Build all models
+../.venv313/Scripts/dbt run
+
+# Run all tests
+../.venv313/Scripts/dbt test
+
+# Generate and browse documentation
+../.venv313/Scripts/dbt docs generate
+../.venv313/Scripts/dbt docs serve   # opens http://localhost:8080
+```
+
 ## Architecture
 
 There are two independent pipelines:
@@ -84,3 +108,32 @@ Reads all 8 tables from AWS RDS PostgreSQL and loads them into Snowflake using t
 **Testing approach:** All tests mock DB engines — no live connections required. `extract()` and `transform()` accept optional `mysql_engine`/`postgres_engine` keyword arguments; when `None`, they call the factory functions.
 
 **PostgreSQL note:** `ROUND()` requires a `::numeric` cast — `double precision` is not accepted by PostgreSQL's two-argument `ROUND`. See `TRANSFORM_SQL` in `transform.py`.
+
+### dbt project (`basket_craft/`)
+
+The dbt project lives at `basket_craft/` inside this repo and targets Snowflake.
+
+**`profiles.yml`** is stored outside the repo at `~/.dbt/profiles.yml` so
+credentials never touch version control. It reads all connection details from
+the same `SNOWFLAKE_*` environment variables used by the Python loader, via
+dbt's `env_var()` function. Models are written to the `BASKET_CRAFT.ANALYTICS`
+schema in Snowflake.
+
+**Staging models** (`basket_craft/models/staging/`) — views over `BASKET_CRAFT.RAW`,
+one per source table. Rename columns to clean snake_case and cast types; no
+joins, filters, or aggregations:
+- `stg_orders` — one row per order
+- `stg_order_items` — one row per order line item
+- `stg_products` — product catalog
+- `stg_customers` — one row per registered customer (source table: `users`)
+
+**Mart models** (`basket_craft/models/marts/`) — materialized as tables:
+- `dim_date` — date spine from 2020-01-01 covering ~10 years
+- `dim_customers` — one row per customer with full address and signup date
+- `dim_products` — one row per product with name and description
+- `fct_order_items` — one row per order line item; joins to orders for
+  customer and order date; includes `line_revenue`, `line_cogs`, and
+  `line_gross_profit` measures
+
+**Tests:** `order_item_id` in `fct_order_items` is tested for `unique` and
+`not_null` via `basket_craft/models/marts/_schema.yml`.

@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: raw
+    database: basket_craft
+    schema: raw
+    tables:
+      - name: orders
+        description: One row per order placed by a customer, including status and timing.
+
+      - name: order_items
+        description: One row per item within an order, linking orders to products with pricing and refund details.
+
+      - name: products
+        description: Product catalog with name and pricing information.
+
+      - name: customers
+        identifier: users
+        description: One row per registered customer, including account creation date and profile details.

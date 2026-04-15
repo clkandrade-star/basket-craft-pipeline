@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: fct_order_items
+    description: >
+      One row per order line item. Grain is one row per order_item_id.
+      Joins stg_order_items to stg_orders to attach customer and order-date
+      context. Contains foreign keys to dim_customers, dim_products, and
+      dim_date, plus revenue, cost, and gross profit measures at the line level.
+    columns:
+      - name: order_item_id
+        description: Primary key — unique identifier for each order line item.
+        tests:
+          - unique
+          - not_null
